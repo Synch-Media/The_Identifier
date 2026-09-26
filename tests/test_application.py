@@ -1,5 +1,6 @@
 import io
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import URLError
 
@@ -373,3 +374,172 @@ def test_exhausted_guarded_result_allows_general_identity(client):
     assert state['result']['status'] == 'Unresolved'
     assert state['result']['product_name'] is None
     assert client.post(f'/api/sessions/{session}/decision', json={'action': 'accepted general identity'}).status_code == 200
+
+
+def export(client, session):
+    response = client.get(f'/api/sessions/{session}/export')
+    assert response.status_code == 200, response.text
+    assert response.headers['Cache-Control'] == 'no-store'
+    return response.json()
+
+
+@pytest.mark.parametrize('action', ['confirmed', 'corrected', 'rejected'])
+def test_export_current_decision(client, action):
+    session = new(client)
+    FakeLangflow.output = RESOLVED
+    state = run(client, session, {'known': {'brand': "Levi's"}})
+    body = {'action': action}
+    if action == 'corrected':
+        body['identity'] = {'name': "Levi's 511 Slim Jeans", 'brand': "Levi's",
+                            'product_name': '511 Slim', 'item_type': 'Jeans'}
+    decision = client.post(f'/api/sessions/{session}/decision', json=body).json()['decision']
+    before = datetime.now(timezone.utc)
+    result = export(client, session)
+    assert result['schema_version'] == '1'
+    assert result['session_id'] == session
+    assert before <= datetime.fromisoformat(result['exported_at']) <= datetime.now(timezone.utc)
+    assert result['recognition_status'] == 'Resolved'
+    assert result['ready_for_market_research'] is (action != 'rejected')
+    assert result['canonical_identity'] == (decision['identity'] if action != 'rejected' else None)
+    assert result['user_decision'] == {key: decision[key] for key in ('action', 'at', 'attempt_number')}
+    assert result['recognition_evidence'] == {key: state['result'][key] for key in (
+        'candidate', 'evidence', 'missing_evidence', 'next_action',
+        'reason_unresolved', 'missing_optional_information', 'sources')}
+    if action == 'corrected':
+        assert result['canonical_identity']['product_name'] != state['result']['product_name']
+
+
+@pytest.mark.parametrize('output', [RESOLVED, NEEDS, UNRESOLVED])
+def test_export_undecided_is_not_canonical(client, output):
+    session = new(client)
+    FakeLangflow.output = output
+    state = run(client, session, {'known': {'item_type': 'Clothing'}})
+    result = export(client, session)
+    assert result['recognition_status'] == state['result']['status']
+    assert result['ready_for_market_research'] is False
+    assert result['canonical_identity'] is None
+    assert result['user_decision'] is None
+
+
+def test_export_accepted_general_identity_and_new_attempt(client):
+    session = new(client)
+    FakeLangflow.output = UNRESOLVED
+    run(client, session, {'known': {'item_type': 'Shoes'}})
+    decision = client.post(f'/api/sessions/{session}/decision', json={'action': 'accepted general identity'}).json()['decision']
+    result = export(client, session)
+    assert result['ready_for_market_research'] is True
+    assert result['recognition_status'] == 'Unresolved'
+    assert result['canonical_identity'] == decision['identity']
+    assert result['canonical_identity']['product_name'] is None
+    assert result['recognition_evidence']['candidate'] == 'Possible model AB-12'
+    # A new attempt clears the current decision, but keeps acceptance in history.
+    state = run(client, session, {'known': {'other_information': 'Additional label'}})
+    assert state['decisions'] == [decision]
+    result = export(client, session)
+    assert result['ready_for_market_research'] is False
+    assert result['canonical_identity'] is None
+    assert result['user_decision'] is None
+
+
+def test_export_identifiers_remain_separate_and_guard_legacy_decision(client):
+    session = new(client)
+    FakeLangflow.output = RESOLVED.replace('Evidence:', 'Evidence: Label shows barcode: 0012345678905\n')
+    state = run(client, session, {'known': {'identifiers': 'UPC: 012345678905; MPN: AB-12; SKU: SHIRT-001; XYZ'}})
+    client.post(f'/api/sessions/{session}/decision', json={'action': 'confirmed'})
+    result = export(client, session)
+    assert result['identifiers'] == ['0012345678905', '012345678905', 'AB-12', 'SHIRT-001', 'XYZ']
+    assert result['canonical_identity']['product_name'] == '511'
+    assert result['recognition_evidence']['evidence'] == state['result']['evidence']
+    stored = main.read(session)
+    stored['decision']['identity']['name'] += ' AB-12'
+    main.save(stored)
+    path = main.folder(session) / 'session.json'
+    before = path.read_bytes()
+    assert 'AB-12' not in export(client, session)['canonical_identity']['name']
+    assert path.read_bytes() == before
+    # An old acceptance invalidated by the existing guard is not resurrected.
+    stored['decision']['identity']['product_name'] = 'AB-12'
+    main.save(stored)
+    before = path.read_bytes()
+    result = export(client, session)
+    assert result['ready_for_market_research'] is False
+    assert result['canonical_identity'] is None
+    assert result['user_decision'] is None
+    assert path.read_bytes() == before
+
+
+def test_export_images_and_read_only_allowlist(client, monkeypatch):
+    session = new(client)
+    buffer = io.BytesIO()
+    Image.new('RGB', (10, 20), 'white').save(buffer, 'PNG')
+    response = client.post(f'/api/sessions/{session}/images', files={
+        'file': (r'C:\private\photos\sample.png', buffer.getvalue())})
+    assert response.status_code == 201
+    FakeLangflow.output = RESOLVED
+    run(client, session)
+    client.post(f'/api/sessions/{session}/decision', json={'action': 'confirmed'})
+    upload(client, session)  # Include both submitted and pending photos.
+    stored = main.read(session)
+    stored['images'][0]['local_path'] = 'PRIVATE_IMAGE_PATH'
+    stored['decision']['identity']['runtime_detail'] = 'PRIVATE_IDENTITY_DETAIL'
+    stored['attempts'][0]['raw_final'] = 'PRIVATE_RAW_TRACE'
+    stored['credentials'] = 'PRIVATE_CREDENTIAL'
+    stored['error'] = 'PRIVATE_RUNTIME_ERROR'
+    main.save(stored)
+    before_state = client.get(f'/api/sessions/{session}').json()
+    before_files = {p.name: (p.read_bytes(), p.stat().st_mtime_ns)
+                    for p in main.folder(session).iterdir()}
+
+    def forbidden(*args, **kwargs):
+        pytest.fail('Export must not save, execute recognition, or create a Langflow client')
+
+    monkeypatch.setattr(main, 'save', forbidden)
+    monkeypatch.setattr(main, 'execute', forbidden)
+    monkeypatch.setattr(main, 'LangflowClient', forbidden)
+    for _ in range(2):
+        result = export(client, session)
+        assert set(result) == {'schema_version', 'session_id', 'exported_at',
+            'ready_for_market_research', 'recognition_status', 'canonical_identity',
+            'user_decision', 'identifiers', 'recognition_evidence', 'images'}
+        assert [image['submitted'] for image in result['images']] == [True, False]
+        for image in result['images']:
+            assert set(image) == {'id', 'filename', 'width', 'height', 'submitted', 'preview_url'}
+            assert image['filename'] == 'sample.png'
+            assert (image['width'], image['height']) == (10, 20)
+            assert image['preview_url'] == f"/api/sessions/{session}/images/{image['id']}"
+            preview = client.get(image['preview_url'])
+            assert preview.status_code == 200
+            assert preview.headers['content-type'] == 'image/jpeg'
+        serialized = json.dumps(result)
+        assert 'PRIVATE_' not in serialized
+        assert stored['langflow_session_id'] not in serialized
+        assert str(main.DATA) not in serialized
+    assert client.get(f'/api/sessions/{session}').json() == before_state
+    assert {p.name: (p.read_bytes(), p.stat().st_mtime_ns)
+            for p in main.folder(session).iterdir()} == before_files
+    assert len(FakeLangflow.calls) == 1
+
+
+@pytest.mark.parametrize('session', ['not-a-uuid', '00000000-0000-0000-0000-000000000000'])
+def test_export_missing_session_uses_existing_404(client, session):
+    response = client.get(f'/api/sessions/{session}/export')
+    assert response.status_code == 404
+    assert response.json() == {'detail': 'Item session not found'}
+
+
+@pytest.mark.parametrize('execution_state', ['idle', 'processing', 'failed'])
+def test_export_without_result(client, execution_state):
+    session = new(client)
+    stored = main.read(session)
+    stored['execution_state'] = execution_state
+    main.save(stored)
+    result = export(client, session)
+    assert result['recognition_status'] is None
+    assert result['ready_for_market_research'] is False
+    assert result['canonical_identity'] is None
+    assert result['user_decision'] is None
+    assert result['identifiers'] == []
+    assert result['images'] == []
+    assert result['recognition_evidence'] == {
+        'candidate': None, 'evidence': '', 'missing_evidence': '', 'next_action': '',
+        'reason_unresolved': '', 'missing_optional_information': '', 'sources': ''}

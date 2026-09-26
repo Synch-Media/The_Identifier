@@ -16,6 +16,7 @@ the existing frozen flow; no new provider or model routing is introduced.
 | File | Responsibility |
 | --- | --- |
 | `backend/main.py` | Local API, image validation/normalization, JSON storage, background tasks and user decisions |
+| `backend/export.py` | Read-only, versioned downstream projection of guarded session state |
 | `backend/models.py` | Pydantic input, identity and recognition schemas |
 | `backend/parser.py` | Strict labeled final-output parser |
 | `backend/naming.py` | Existing catalog-identifier guard for active identities; preserves raw attempt evidence |
@@ -72,6 +73,14 @@ is included in later evidence prompts and a repeated matching result stays
 visibly rejected. Execution failures never manufacture a recognition outcome.
 
 ## Storage and boundaries
+
+Downstream pricing and market-research systems should consume
+`GET /api/sessions/{session_id}/export`, as specified in the
+[downstream export contract](DOWNSTREAM_EXPORT.md), rather than call Langflow
+directly or read local session files. The export makes no model call and writes
+no state. Only a current confirmed, corrected, or accepted general identity is
+canonical market-research input; a model's Resolved status alone is insufficient.
+Identifier remains a standalone identification application.
 
 `data/sessions/<UUID>/session.json` stores evidence metadata, attempts, results
 and decisions. Original images (`.original`) and normalized JPEGs live alongside.

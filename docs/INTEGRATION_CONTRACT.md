@@ -6,6 +6,13 @@ Date: 2026-09-25
 
 ## Current application checkpoint
 
+For downstream applications, use the versioned
+[downstream export contract](DOWNSTREAM_EXPORT.md):
+`GET /api/sessions/{session_id}/export`. Future pricing and market systems should
+consume this export rather than call Langflow directly. The historical transport
+details below describe Identifier's internal recognition integration, not the
+downstream interface.
+
 FastAPI and the React/TypeScript UI now implement the application layer described
 in [ARCHITECTURE.md](ARCHITECTURE.md). The transport recipe below remains in use:
 Desktop cookies plus a temporary per-attempt key, normalized JPEG upload,

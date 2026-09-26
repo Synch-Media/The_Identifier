@@ -13,6 +13,7 @@ from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Request, Uplo
 from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image, ImageOps, UnidentifiedImageError
 
+from .export import export_session
 from .langflow import LangflowClient
 from .models import DecisionInput, Identity, RunInput
 from .naming import guard_identity, guard_session, identifiers_for
@@ -108,6 +109,11 @@ def create_session():
 @app.get('/api/sessions/{session_id}')
 def get_session(session_id: str):
     return read(session_id)
+
+
+@app.get('/api/sessions/{session_id}/export')
+def get_session_export(session_id: str):
+    return export_session(read(session_id), now())
 
 
 def editable(session):
