@@ -1,0 +1,8 @@
+Status: Needs Evidence
+Brand: Example Brand
+Product Name: Unknown
+Item Type: Shoes
+Evidence:
+- Synthetic manual brand evidence.
+Missing Evidence: A supported product name.
+Next Action: Enter the product label text.

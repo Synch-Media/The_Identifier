@@ -1,0 +1,9 @@
+{
+  "name": "identifier-local-app",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {"dev": "vite", "build": "tsc -b && vite build", "test": "node --test tests/ui.test.mjs", "test:live": "node tests/live-browser.mjs"},
+  "dependencies": {"react": "^19.2.0", "react-dom": "^19.2.0"},
+  "devDependencies": {"@types/react": "^19.2.0", "@types/react-dom": "^19.2.0", "@vitejs/plugin-react": "^5.1.0", "typescript": "~5.9.3", "vite": "^7.3.0", "@playwright/test": "^1.56.0"}
+}

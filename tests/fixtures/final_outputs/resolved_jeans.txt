@@ -1,0 +1,22 @@
+Status: Resolved
+
+Name:
+Levi's 511 Jeans
+
+Brand:
+Levi's
+
+Product Name:
+511
+
+Style Accent:
+None
+
+Item Type:
+Jeans
+
+Evidence:
+- Synthetic test example: a label supports the example identity.
+
+Sources:
+- Synthetic test fixture; no user image or real research record.

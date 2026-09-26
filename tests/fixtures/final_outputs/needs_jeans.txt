@@ -1,0 +1,9 @@
+Status: Needs Evidence
+Brand: Levi's
+Product Name: Unknown
+Item Type: Jeans
+Evidence:
+- Synthetic test example with only a brand label.
+Missing Evidence: Marketed product name.
+Next Action: Add a product label photo.
+Sources: None

@@ -1,0 +1,6 @@
+export type Identity = { name: string | null; brand: string | null; product_name: string | null; style_accent: string | null; item_type: string | null }
+export type Result = Identity & { status: 'Resolved' | 'Needs Evidence' | 'Unresolved'; candidate: string | null; evidence: string; missing_evidence: string; next_action: string; reason_unresolved: string; missing_optional_information: string; sources: string }
+export type Known = { brand: string; product_name: string; identifiers: string; item_type: string; other_information: string }
+export type Decision = { action: 'confirmed' | 'corrected' | 'rejected' | 'accepted general identity'; identity: Identity; at: string; attempt_number: number }
+export type Attempt = { number: number; started_at: string; runtime_seconds: number | null; input: { known: Known; no_more_information: boolean }; raw_final: string | null; parsed_result: Result | null; error: string | null; cleanup_warning?: string }
+export type Session = { id: string; langflow_session_id: string; execution_state: 'idle' | 'processing' | 'completed' | 'failed'; images: { id: string; filename: string; submitted: boolean }[]; attempts: Attempt[]; result: Result | null; decision: Decision | null; decisions: Decision[]; error: string | null }

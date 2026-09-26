@@ -1,0 +1,25 @@
+Status: Needs Evidence
+
+Brand:
+Unknown
+
+Product Name:
+Unknown
+
+Item Type:
+Shoes
+
+Candidate:
+Possible low-top shoes
+
+Evidence:
+- Synthetic test example: shoes with no readable label.
+
+Missing Evidence:
+A readable brand and product label.
+
+Next Action:
+Add a label photo or enter the label text.
+
+Sources:
+None
