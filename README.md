@@ -116,5 +116,5 @@ are not part of clean-checkout validation. See [setup](docs/SETUP_WINDOWS.md).
 - `reference/langflow/`: immutable validated export and SHA-256 record.
 - `requirements.lock.txt` and `frontend/package-lock.json`: tested dependency pins.
 
-No software license has been selected. Model weights, external service runtimes,
+Licensed under Apache 2.0. Model weights, external service runtimes,
 credentials and private test evidence are not distributed with this checkpoint.
